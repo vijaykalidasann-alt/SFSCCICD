@@ -1,0 +1,182 @@
+name: validate-deploy-main
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      service-name:
+        required: true
+        type: string
+      validate:
+        type: string
+        required: false
+        default: ""
+
+# Jobs to be executed when the above conditions are met
+jobs:
+    # This is the name of the job. You can give it whatever name you want
+    validate-or-deploy-in-salesforce-org:
+        # This job runs inside a VM. Here we
+        # can specify which OS this VM should run on. 
+        # In this case, we are going to run our commands on the latest version
+        # of ubuntu
+        runs-on: ubuntu-latest
+        environment: ${{ inputs.environment }}
+        if: ${{ github.actor != 'dependabot[bot]' }}
+        steps:
+            # Now we install nodejs in the VM, and specify version 16
+            # Use the official action to set up the CLI
+            - uses: actions/setup-node@v4
+              with:
+                # Use a specific, stable version to minimize internal npm warnings
+                node-version: '20' 
+
+            # The idea is that the VM can access your remote repository
+            # because your repository is an sfdx project.
+            # This is a default action that allows us to enter the root 
+            # directory of the repository
+
+            # Make sure to specify fetch-depth:0. This allows us to
+            # access previous commits that have been pushed to the repository.
+
+            # We'll need this later when we try to figure out which metadata has 
+            # changed between commits, so that we can only deploy that metadata
+            # to the destination org
+
+            - name: 'Checkout source code'
+              uses: actions/checkout@v3
+              with:
+                fetch-depth: 0
+            
+            # Now, we need a way to let the developer specify which tests to run, which
+            # could be all tests or just the tests relevant to their deployment.
+
+            # To do this, we can ask the developer to name their test classes in the
+            # body of the PR, using the following syntax
+
+            # Apex::[CommunitiesLoginControllerTest,MyProfilePageControllerTest]::Apex
+            # or Apex::[all]::Apex to run all tests
+
+            # This special delimeter can be added to the PR template so that your 
+            # team doesn't have to remember the syntax. 
+
+            # Once a developer has specified a list of classes to run, we need to be able
+            # to extract this information from the PR, and pass it on the the VM.
+
+            - name: 'Read PR Body'
+              env:
+                # The pull request body is available through the github context object
+                # we put the body of the pull request in an env variable (only available to this step)
+                PR_BODY: ${{github.event.pull_request.body}}
+
+              # Here we print the content of the environment variable and
+              # pipe to a a text file.
+
+              # Then we call the local script parsePR.js, which will create
+              # a new file called testsToRun.txt. This file will have the list
+              # of tests to run separated by a comma
+
+              # Finally, we add the list of tests to the $GITHUB_ENV variable
+              # as this allows us to reference the list in a subsequent step.  If you
+              # were using a normal env variable, its value would not be available outside this step.
+              run: |
+                  echo $PR_BODY > ./pr_body.txt
+                  node ./parsePR.js              
+                  TESTS=$(cat testsToRun.txt)       
+                  echo "APEX_TESTS=$TESTS" >> $GITHUB_ENV
+                  
+            # This is the single most important fix.
+            - name: 'Install Salesforce CLI (sf)'
+              run: |
+                  # Install the modern SF CLI (sf) globally. This resolves dependency conflicts.
+                  npm install @salesforce/cli --global
+
+            # Then we install the SFDX-Git-Delta plugin - https://github.com/scolladon/sfdx-git-delta
+            # This is an awesome plugin that allows us to extract a package.xml with the metadata
+            # that has changed between commits. I highly recommend going over the github readme 
+            # for more information on how this works.
+
+            # 3. Clean SFDX-Git-Delta Installation (Ensuring it uses the new CLI)
+            - name: 'Installing sfdx git delta'
+              run: |
+                  # Use the new 'sf' command syntax for plugins if possible, 
+                  # or the old one should alias correctly.
+                  npm install sfdx-git-delta --global
+                  # OR simply: sf plugins install sfdx-git-delta
+                  sf plugins # Verify installation
+
+            # Install java as it is required for the next step
+            - name: 'updating java'
+              run: sudo apt-get update
+            - name: 'Installing java'
+              run: sudo apt-get install openjdk-8-jdk
+
+            # 4. Clean SFDX Scanner Installation (Scanner needs Node 18.18+ or 20+, which you have)
+            - name: 'Installing SFDX scanner'
+              run: sf plugins:install @salesforce/sfdx-scanner
+
+            # Prior to setting up this workflow, you have to create a Github Secret
+            # that contains the sfdx url of the salesforce org.
+
+            # The steps to generate the url are here 
+            # https://developer.salesforce.com/docs/atlas.en-us.sfdx_cli_reference.meta/sfdx_cli_reference/cli_reference_auth_sfdxurl.htm
+
+            # This URL can then be used with the sfdx auth:sfdxurl:store to authenticate
+            # the sfdx project in the repositry, against the org from which the URL
+            # was generated from. This works just like that, there's no need to create
+            # connected apps or any else. 
+
+            # The URL is stored in the Github Secret named SFDX_URL
+            # so here we store the URL into a text file
+            - name: 'Populate auth file with SFDX_URL secret of salesforce org'
+              shell: bash
+              run: |
+                  echo ${{ secrets.DEVAUTHURL }} > ./SFDX_URL.txt
+            # --- AUTHENTICATION STEP (This one worked, but let's make it sf) ---
+            # --- AUTHENTICATION STEP ---
+            - name: 'Authenticate to Salesforce Org'
+              # The correct modern flag is --set-default.
+              # The command must use the new 'sf' executable.
+              # run: sf org login sfdx-url -f ./SFDX_URL.txt --set-default-alias ${{ inputs.environment }}  <-- OLD (FAILING)
+              run: sf org login sfdx-url -f ./SFDX_URL.txt --set-default --alias ${{ inputs.environment }}
+
+            # --- DEPLOYMENT STEP 1 ---
+            - name: 'Check-only deploy delta changes - run specified tests'
+              if: ${{ env.APEX_TESTS != 'all' }}
+              run: |
+                  echo ${{env.APEX_TESTS}}
+                  # Replaces the old --checkonly with the new --dry-run flag if the 'validate' input is present.
+                  sf project deploy start -d "force-app/main/default" --target-org ${{ inputs.environment }} --test-level RunSpecifiedTests --run-tests ${{env.APEX_TESTS}} --json ${{ inputs.validate && '--dry-run' || '' }}
+
+            # --- DEPLOYMENT STEP 2 ---
+            - name: 'Check-only deploy delta changes - run all tests'
+              if: ${{ env.APEX_TESTS == 'all' }}
+              run: |
+                  # Replaces the old --checkonly with the new --dry-run flag if the 'validate' input is present.
+                  sf project deploy start -d "force-app/main/default" --target-org ${{ inputs.environment }} --test-level RunLocalTests --json ${{ inputs.validate && '--dry-run' || '' }}
+
+            # --- Prepare Destructive Package ---
+            - name: 'Prepare Destructive Package'
+              run: |
+                  # 1. Create a temporary deployment directory
+                  mkdir -p deploy/destructiveChanges
+                  
+                  # 2. Copy the DESTRUCTIVE MANIFEST
+                  # (Use the path that finally works for you—assuming the root-level folder is correct now)
+                  cp destructiveChanges/destructiveChanges.xml deploy/destructiveChanges/destructiveChanges.xml
+                  
+                  # 3. CRITICAL CHANGE: Create the mandatory MINIMAL placeholder package.xml
+                  #    This ensures the deployment ONLY processes the destructive changes.
+                  echo '<?xml version="1.0" encoding="UTF-8"?>' > deploy/package.xml
+                  echo '<Package xmlns="http://soap.sforce.com/2006/04/metadata">' >> deploy/package.xml
+                  echo '    ' >> deploy/package.xml
+                  echo '    <version>58.0</version>' >> deploy/package.xml  # Use your target API version
+                  echo '</Package>' >> deploy/package.xml
+
+            # --- DESTRUCTIVE DEPLOY STEP (MODIFIED) ---
+            - name: 'Check-only Deploy destructive changes (if any)'
+              # We deploy the 'deploy' folder created above.
+              # This folder now contains deploy/package.xml and deploy/destructiveChanges/destructiveChanges.xml
+              run: sf project deploy start --metadata-dir deploy --target-org ${{ inputs.environment }} --ignore-warnings ${{ inputs.validate && '--dry-run' || '' }}

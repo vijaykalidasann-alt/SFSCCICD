@@ -1,0 +1,115 @@
+name: Validate against org DEVIntegration from mergedev
+on:
+  pull_request:
+    types: [edited, opened, reopened, synchronize]
+    branches:
+      - 'cicddevelop*'
+    paths:
+      - 'force-app/**'
+      
+jobs:
+     
+  build:
+    permissions: write-all
+    runs-on: ubuntu-latest
+    environment: developer
+    steps:
+      # Checkout the Source code from the latest commit
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+       # Updated the node version from 20.x to 21.x
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+      #- name: Install NPM
+       # run: |
+        #  npm install
+      # Install the SFDX CLI using npm command
+      - name: Install the SFDX CLI
+        run: |
+          npm install -g @salesforce/cli
+          
+      - name: Install the sfdx-git-delta plugin
+        run: |
+          echo 'y' | sf plugins:install sfdx-git-delta
+          
+      - name: Decrypt the server.key.enc file & store inside assets folder
+        run: |
+          openssl enc -nosalt -aes-256-cbc -d -in ${{ secrets.ENCRYPTION_KEY_FILE }} -out ${{ secrets.JWT_KEY_FILE }} -base64 -K ${{ secrets.DECRYPTION_KEY }} -iv ${{ secrets.DECRYPTION_IV }}
+          
+      - name: Authenticate Salesforce ORG
+        env:
+          CLIENT_ID: ${{ secrets.SF_CONSUME_KEY }}
+          USERNAME: ${{ secrets.SF_USERNAME }}
+          INSTANCE_URL: ${{ secrets.SG_URL }}
+        run: |
+          sf login org jwt --username $USERNAME --client-id $CLIENT_ID --jwt-key-file ${{ secrets.JWT_KEY_FILE }} --instance-url ${{ secrets.SG_URL }} --set-default-dev-hub --alias HubOrg
+          sf config set target-dev-hub=HubOrg --global
+          # sfdx force:auth:jwt:grant --clientid $CLIENT_ID --jwtkeyfile ./server.key --username $USERNAME --instanceurl $INSTANCE_URL -a prod
+          # sfdx force:auth:jwt:grant --clientid $CLIENT_ID --jwtkeyfile  ${{ secrets.JWT_KEY_FILE }} --username $USERNAME --setdefaultdevhubusername -a HubOrg --instanceurl ${{ secrets.SG_URL }} 
+          # sf deploy metadata validate --manifest ./package/package.xml --target-org "$SF_USER_ID" --post-destructive-changes ./destructiveChanges/destructiveChanges.xml --json
+      
+      - name: Generate the package.xml for delta files
+        run: |
+          mkdir delta
+          sfdx sgd:source:delta --to "HEAD" --from "HEAD~1" --output "./delta" --ignore-whitespace -d -i .sgdignore
+          echo "--- package.xml generated with added and modified metadata ---"
+          cat delta/package/package.xml
+          echo "--- destructiveChanges.xml generated with deleted metadata ---"
+          cat delta/destructiveChanges/destructiveChanges.xml
+          
+      - name: Install the SFDX CLI Scanner
+        run: |
+          echo 'y' | sf plugins:install @salesforce/sfdx-scanner
+      
+      #- name: Run SFDX and Apex Tests
+       # run: |
+        #  mkdir reports
+          # sfdx force:apex:test:run -u HubOrg -l RunLocalTests -c -w 10 -d ./reports/
+         # sf apex run test --target-org HubOrg --result-format human --output-dir ./reports/ --test-level RunLocalTests --wait 10
+          
+      - name: Run CLI Scanner
+        if: always()
+        run: |
+          mkdir -p reports
+          # sf scanner:run -f html -t "force-app" -e "eslint,retire-js,pmd,cpd" -c "Design,Best Practices,Code Style,Performance,Security" --outfile reports/scan-reports.html
+          # sf scanner run --format html --target force-app --engine eslint --category Design,Best Practices,Code Style,Performance,Security --outfile reports/scan-reports.html
+          sf scanner:run -f html -t "force-app" -e "eslint,retire-js,pmd,cpd" -c "Design,Best Practices,Code Style,Performance,Security" --outfile reports/scan-reports.html
+      # Run Apex PMD Scan
+      #- name: 'Run PMD scan'
+      #  uses: pmd/pmd-github-action@v1
+      #  id: pmd
+      #  with:
+      #      sourcePath: 'force-app'
+      #      rulesets: 'ruleset.xml'
+      #      analyzeModifiedFilesOnly: false
+
+      # Check for PMD violations
+      #- name: 'Check for PMD violations'
+      #  # if: steps.pmd.outputs.violations != 0
+      #  run: |
+      #    # exit 1
+      #    echo "test"
+
+
+      # Run Validation of Destructive Source
+      # - name: Run Validation on Destructive Source
+      #  run: sf deploy metadata validate --target-org HubOrg -d delta/destructiveChanges -w 10 
+        # run: sf deploy metadata validate --target-org $USERNAME --post-destructive-changes ./delta/destructiveChanges.xml
+ 
+
+      # Run Validation of Deploy Source
+      - name: Run Validation on Deploy Source
+        #continue-on-error: true
+        run: sf project deploy validate --target-org HubOrg -x delta/package/package.xml -w 10 -l RunLocalTests --junit  
+        
+
+      - name: Upload Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-reports
+          path: reports/

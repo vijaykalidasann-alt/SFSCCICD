@@ -1,0 +1,30 @@
+name: develop
+
+on:
+    push:
+      branches: [ develop ]
+    workflow_dispatch:
+      inputs:
+        service-name: 
+          required: true
+          type: string   
+          default: 'salesforce-service-cloud'
+
+jobs:
+    validate-in-dev:
+        uses: ./.github/workflows/validate-deploy-template.yml
+        with:
+            environment: qa
+            service-name: ${{ inputs.service-name }}
+            validate: "--checkonly"
+        secrets: inherit
+
+    deploy-in-dev:
+        uses: ./.github/workflows/validate-deploy-template.yml
+        needs: [validate-in-dev]
+        with:
+            environment: qa
+            service-name: ${{ inputs.service-name }}
+        secrets: inherit
+
+   
