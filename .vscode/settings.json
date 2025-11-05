@@ -1,0 +1,14 @@
+{
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/bower_components": true,
+    "**/.sf": true,
+    "**/.sfdx": true
+  },
+  "xml.preferences.showSchemaDocumentationType": "none",
+  "salesforce.einsteinForDevelopers.advanced": {
+    "enableagentichat": true
+  },
+  "salesforce.einsteinForDevelopers.enable": true,
+  "salesforce.einsteinForDevelopers.enableDebugLogging": true
+}
