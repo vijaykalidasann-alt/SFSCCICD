@@ -11,7 +11,7 @@ on:
 
 jobs:
     # This is the name of the job. You can give it whatever name you want
-    validate-or-deploy-in-salesforce-org:
+    Test new CICD:
         # This job runs inside a VM. Here we
         # can specify which OS this VM should run on. 
         # In this case, we are going to run our commands on the latest version
@@ -126,18 +126,7 @@ jobs:
               run: sf org login sfdx-url -f ./SFDX_URL.txt --set-default --alias vjdev
 
             # --- DEPLOYMENT STEP 1 ---
-            - name: 'Check-only deploy delta changes - run specified tests'
-              if: ${{ env.APEX_TESTS != 'all' }}
+            - name: 'Validate changes - run specified tests'
               run: |
-                  echo ${{env.APEX_TESTS}}
-                  # Replaces the old --checkonly with the new --dry-run flag if the 'validate' input is present.
-                  sf project deploy start -d "force-app/main/default" --target-org vjdev --test-level RunSpecifiedTests --run-tests ${{env.APEX_TESTS}} --json ${{ inputs.validate && '--dry-run' || '' }}
-
-            # --- DEPLOYMENT STEP 2 ---
-            - name: 'Check-only deploy delta changes - run all tests'
-              if: ${{ env.APEX_TESTS == 'all' }}
-              run: |
-                  # Replaces the old --checkonly with the new --dry-run flag if the 'validate' input is present.
-                  sf project deploy start -d "force-app/main/default" --target-org vjdev --test-level RunLocalTests --json ${{ inputs.validate && '--dry-run' || '' }}
-
+                  sf project deploy start -d "force-app/main/default" --check-only --target-org vjdev 
          
