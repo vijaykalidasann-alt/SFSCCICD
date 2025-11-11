@@ -125,16 +125,15 @@ jobs:
               # run: sf org login sfdx-url -f ./SFDX_URL.txt --set-default-alias ${{ inputs.environment }}  <-- OLD (FAILING)
               run: sf org login sfdx-url -f ./SFDX_URL.txt --set-default --alias vjdev
 
-              - name: 'Get changed files'
+            - name: 'Get changed files'
               run: |
-                  git fetch origin ${{ github.base_ref }} --depth=1
-                  git diff --name-only origin/${{ github.base_ref }}...${{ github.head_ref }} > changed_files.txt
-                  echo "Changed files:"
-                  cat changed_files.txt
+                git fetch origin ${{ github.base_ref }} --depth=1
+                git diff --name-only origin/${{ github.base_ref }}...${{ github.head_ref }} > changed_files.txt
+                echo "Changed files:"
+                cat changed_files.txt
 
 
             # --- DEPLOYMENT STEP 1 ---
             - name: 'Validate changes - run specified tests'
               run: |
-                  sf project deploy start -d "force-app/main/default"  --ignore-conflicts --dry-run --target-org vjdev 
-         
+                  sf project deploy start -d "force-app/main/default"  --ignore-conflicts --dry-run --target-org vjdev
