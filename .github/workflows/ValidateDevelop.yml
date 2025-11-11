@@ -129,9 +129,12 @@ jobs:
               run: git fetch origin ${{ github.base_ref }}
 
             - name: 'Get changed files'
+              id: changed-files
               run: |
-                CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }} HEAD)
-                echo "changed_files=${CHANGED_FILES}" >> $GITHUB_OUTPUT
+                CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }} HEAD -- 'force-app/main/default/')
+                echo "Changed files:"
+                echo "$CHANGED_FILES"
+                echo "changed_files=$CHANGED_FILES" >> $GITHUB_OUTPUT
 
             - name: Print changed files
               run: |
@@ -140,6 +143,17 @@ jobs:
 
 
             # --- DEPLOYMENT STEP 1 ---
-            - name: 'Validate changes - run specified tests'
+            #- name: 'Validate changes - run specified tests'
+            #  run: |
+            #     sf project deploy start -d "force-app/main/default"  --ignore-conflicts --dry-run --target-org vjdev
+
+            - name: 'Deploy only changed metadata to Salesforce'
+              if: steps.changed-files.outputs.changed_files != ''
               run: |
-                  sf project deploy start -d "force-app/main/default"  --ignore-conflicts --dry-run --target-org vjdev
+                for file in ${{ steps.changed-files.outputs.changed_files }}
+                do
+                if [[ -f "$file" ]]; then
+                echo "Deploying $file..."
+                sf project deploy start --metadata "$file" --ignore-conflicts --target-org vjdev
+                fi
+                done
