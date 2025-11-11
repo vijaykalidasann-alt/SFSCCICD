@@ -114,7 +114,7 @@ jobs:
                 done
                 if [[ -d changed/force-app/main/default ]]; then
                   echo "Deploying only changed metadata..."
-                  sf project deploy start -d changed/force-app/main/default --ignore-conflicts --dry-run --target-org vjdev
+                  sf project deploy start -d changed/force-app/main/default --ignore-conflicts --dry-run -l RunLocalTests --target-org vjdev
                 else
                   echo "No deployable metadata found under changed/force-app/main/default"
                 fi
