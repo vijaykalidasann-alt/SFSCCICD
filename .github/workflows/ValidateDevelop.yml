@@ -11,7 +11,7 @@ on:
 
 jobs:
     # This is the name of the job. You can give it whatever name you want
-    Test new CICD:
+    validate-or-deploy-in-salesforce-org:
         # This job runs inside a VM. Here we
         # can specify which OS this VM should run on. 
         # In this case, we are going to run our commands on the latest version
