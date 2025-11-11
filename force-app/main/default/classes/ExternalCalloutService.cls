@@ -36,6 +36,7 @@ public with sharing class ExternalCalloutService {
                 w.statusCode = resp.getStatusCode();
                 w.status = resp.getStatus();
                 w.body = resp.getBody();
+                system.debug('vj');
                 w.responseHeaders = new Map<String, String>();
                 for (String h : resp.getHeaderKeys()) {
                     w.responseHeaders.put(h, resp.getHeader(h));
