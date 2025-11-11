@@ -147,13 +147,17 @@ jobs:
             #  run: |
             #     sf project deploy start -d "force-app/main/default"  --ignore-conflicts --dry-run --target-org vjdev
 
-            - name: 'Deploy only changed metadata to Salesforce'
+            # --- STEP 2: Prepare temp folder and deploy ---
+            - name: 'Deploy only changed files'
               if: steps.changed-files.outputs.changed_files != ''
               run: |
+                mkdir changed
                 for file in ${{ steps.changed-files.outputs.changed_files }}
                 do
                 if [[ -f "$file" ]]; then
-                echo "Deploying $file..."
-                sf project deploy start --metadata "$file" --ignore-conflicts --target-org vjdev
+                mkdir -p changed/$(dirname "$file")
+                cp "$file" changed/"$file"
                 fi
                 done
+                echo "Deploying only changed metadata..."
+                sf project deploy start -d changed/force-app/main/default --ignore-conflicts --target-org vjdev
