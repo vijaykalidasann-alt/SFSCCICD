@@ -1,4 +1,4 @@
-name: Test new CICD
+name: validate develop branch on pull request
 on:
   pull_request:
     types: [edited, opened, reopened, synchronize]
@@ -11,11 +11,10 @@ on:
 
 jobs:
     # This is the name of the job. You can give it whatever name you want
-    validate-or-deploy-in-salesforce-org:
+    validate-in-salesforce-org:
         # This job runs inside a VM. Here we
         # can specify which OS this VM should run on. 
-        # In this case, we are going to run our commands on the latest version
-        # of ubuntu
+        # In this case, we are going to run our commands on the latest version of ubuntu
         runs-on: ubuntu-latest
         if: ${{ github.actor != 'dependabot[bot]' }}
         steps:
@@ -26,51 +25,13 @@ jobs:
                 # Use a specific, stable version to minimize internal npm warnings
                 node-version: '20' 
 
-            # The idea is that the VM can access your remote repository
-            # because your repository is an sfdx project.
-            # This is a default action that allows us to enter the root 
-            # directory of the repository
-
-            # Make sure to specify fetch-depth:0. This allows us to
-            # access previous commits that have been pushed to the repository.
-
-            # We'll need this later when we try to figure out which metadata has 
-            # changed between commits, so that we can only deploy that metadata
-            # to the destination org
-
+            # Next, we checkout the source code of the repository
             - name: 'Checkout source code'
               uses: actions/checkout@v3
               with:
                 fetch-depth: 0
-            
-            # Now, we need a way to let the developer specify which tests to run, which
-            # could be all tests or just the tests relevant to their deployment.
-
-            # To do this, we can ask the developer to name their test classes in the
-            # body of the PR, using the following syntax
-
-            # Apex::[CommunitiesLoginControllerTest,MyProfilePageControllerTest]::Apex
-            # or Apex::[all]::Apex to run all tests
-
-            # This special delimeter can be added to the PR template so that your 
-            # team doesn't have to remember the syntax. 
-
-            # Once a developer has specified a list of classes to run, we need to be able
-            # to extract this information from the PR, and pass it on the the VM.
-
-              # Here we print the content of the environment variable and
-              # pipe to a a text file.
-
-              # Then we call the local script parsePR.js, which will create
-              # a new file called testsToRun.txt. This file will have the list
-              # of tests to run separated by a comma
-
-              # Finally, we add the list of tests to the $GITHUB_ENV variable
-              # as this allows us to reference the list in a subsequent step.  If you
-              # were using a normal env variable, its value would not be available outside this step.
-             
                   
-            # This is the single most important fix.
+            # Install salesforce CLI.
             - name: 'Install Salesforce CLI (sf)'
               run: |
                   # Install the modern SF CLI (sf) globally. This resolves dependency conflicts.
@@ -81,7 +42,7 @@ jobs:
             # that has changed between commits. I highly recommend going over the github readme 
             # for more information on how this works.
 
-            # 3. Clean SFDX-Git-Delta Installation (Ensuring it uses the new CLI)
+            # Clean SFDX-Git-Delta Installation (Ensuring it uses the new CLI)
             - name: 'Installing sfdx git delta'
               run: |
                   # Use the new 'sf' command syntax for plugins if possible, 
@@ -96,23 +57,8 @@ jobs:
             - name: 'Installing java'
               run: sudo apt-get install openjdk-8-jdk
 
-            # 4. Clean SFDX Scanner Installation (Scanner needs Node 18.18+ or 20+, which you have)
-            - name: 'Installing SFDX scanner'
-              run: sf plugins:install @salesforce/sfdx-scanner
 
-            # Prior to setting up this workflow, you have to create a Github Secret
-            # that contains the sfdx url of the salesforce org.
-
-            # The steps to generate the url are here 
-            # https://developer.salesforce.com/docs/atlas.en-us.sfdx_cli_reference.meta/sfdx_cli_reference/cli_reference_auth_sfdxurl.htm
-
-            # This URL can then be used with the sfdx auth:sfdxurl:store to authenticate
-            # the sfdx project in the repositry, against the org from which the URL
-            # was generated from. This works just like that, there's no need to create
-            # connected apps or any else. 
-
-            # The URL is stored in the Github Secret named SFDX_URL
-            # so here we store the URL into a text file
+            # Steps to authenticate to the salesforce org
             - name: 'Populate auth file with SFDX_URL secret of salesforce org'
               shell: bash
               run: |
@@ -125,9 +71,11 @@ jobs:
               # run: sf org login sfdx-url -f ./SFDX_URL.txt --set-default-alias ${{ inputs.environment }}  <-- OLD (FAILING)
               run: sf org login sfdx-url -f ./SFDX_URL.txt --set-default --alias vjdev
 
+            # Fetch the base branch to compare changes  
             - name: 'Fetch base branch'
               run: git fetch origin ${{ github.base_ref }}
 
+            # Get the list of changed files in force-app/main/default  
             - name: 'Get changed files'
               id: changed-files
               run: |
@@ -135,14 +83,15 @@ jobs:
                 echo "Changed files:"
                 echo "$CHANGED_FILES"
                 echo "changed_files=$CHANGED_FILES" >> $GITHUB_OUTPUT
-
+              
+            # Print changed files for debugging
             - name: Print changed files
               run: |
                 echo "The following files were changed:"
                 echo "${{ steps.changed-files.outputs.changed_files }}"    
 
 
-            # --- DEPLOYMENT STEP 1 ---
+            # Deploy only the changed files to the target org
             - name: 'Deploy only changed files'
               if: steps.changed-files.outputs.changed_files != ''
               run: |
