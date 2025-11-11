@@ -139,25 +139,33 @@ jobs:
             - name: Print changed files
               run: |
                 echo "The following files were changed:"
-                echo "${{ steps.changed-files.outputs.changed_files }}"
+                echo "${{ steps.changed-files.outputs.changed_files }}"    
 
 
             # --- DEPLOYMENT STEP 1 ---
-            #- name: 'Validate changes - run specified tests'
-            #  run: |
-            #     sf project deploy start -d "force-app/main/default"  --ignore-conflicts --dry-run --target-org vjdev
-
-            # --- STEP 2: Prepare temp folder and deploy ---
             - name: 'Deploy only changed files'
               if: steps.changed-files.outputs.changed_files != ''
               run: |
-                mkdir changed
+                set -e
+                mkdir -p changed
                 for file in ${{ steps.changed-files.outputs.changed_files }}
                 do
-                if [[ -f "$file" ]]; then
-                mkdir -p changed/$(dirname "$file")
-                cp "$file" changed/"$file"
-                fi
+                  if [[ -f "$file" ]]; then
+                    # Copy the changed file
+                    mkdir -p "changed/$(dirname "$file")"
+                    cp "$file" "changed/$file"
+                    # Copy corresponding -meta.xml from HEAD if it exists
+                    META_FILE="${file}-meta.xml"
+                    if git show "HEAD:$META_FILE" > /dev/null 2>&1; then
+                      echo "Adding meta.xml for $file"
+                      mkdir -p "changed/$(dirname "$META_FILE")"
+                      git show "HEAD:$META_FILE" > "changed/$META_FILE"
+                    fi
+                  fi
                 done
-                echo "Deploying only changed metadata..."
-                sf project deploy start -d changed/force-app/main/default --ignore-conflicts --dry-run --target-org vjdev
+                if [[ -d changed/force-app/main/default ]]; then
+                  echo "Deploying only changed metadata..."
+                  sf project deploy start -d changed/force-app/main/default --ignore-conflicts --dry-run --target-org vjdev
+                else
+                  echo "No deployable metadata found under changed/force-app/main/default"
+                fi
