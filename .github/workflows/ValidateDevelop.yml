@@ -130,6 +130,8 @@ jobs:
 
             - name: 'Get changed files'
               run: |
+                echo "Fetching all branches..."
+                git fetch --all --prune --unshallow
                 echo "Comparing origin/${{ github.base_ref }}...${{ github.head_ref }}"
                 git diff --name-only origin/${{ github.base_ref }}...${{ github.head_ref }} > changed_files.txt
                 echo "Changed files:"
