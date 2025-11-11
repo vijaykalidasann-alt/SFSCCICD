@@ -160,4 +160,4 @@ jobs:
                 fi
                 done
                 echo "Deploying only changed metadata..."
-                sf project deploy start -d changed/force-app/main/default --ignore-conflicts --target-org vjdev
+                sf project deploy start -d changed/changed/force-app/main/default --ignore-conflicts --target-org vjdev
