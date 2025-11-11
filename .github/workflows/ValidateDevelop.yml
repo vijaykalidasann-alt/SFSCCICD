@@ -1,4 +1,4 @@
-name: Validate against org DEVIntegration from mergedev
+name: Test new CICD
 on:
   pull_request:
     types: [edited, opened, reopened, synchronize]
