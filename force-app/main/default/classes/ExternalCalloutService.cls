@@ -49,8 +49,6 @@ public with sharing class ExternalCalloutService {
                 w.isSuccess = false;
                 w.errorMessage = 'Null HttpResponse received';
                 system.debug('Test');
-                system.debug('Test2');
-                system.debug('Test3');
             }
             return w;
         }
