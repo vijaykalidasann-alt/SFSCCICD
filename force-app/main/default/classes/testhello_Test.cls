@@ -6,6 +6,7 @@ private class testhello_Test {
         testhello th = new testhello();
 
         // Assert - basic non-null check
+        system.debug('Test');
         System.assertNotEquals(null, th, 'Constructor should create an instance');
     }
 

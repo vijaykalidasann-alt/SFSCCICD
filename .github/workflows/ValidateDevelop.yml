@@ -78,12 +78,17 @@ jobs:
             # Get the list of changed files in force-app/main/default  
             - name: 'Get changed files'
               id: changed-files
+              shell: bash
               run: |
                 CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }} HEAD -- 'force-app/main/default/')
                 echo "Changed files:"
                 echo "$CHANGED_FILES"
-                echo "changed_files=$CHANGED_FILES" >> $GITHUB_OUTPUT
-              
+                {
+                  echo "changed_files<<EOF"
+                  echo "$CHANGED_FILES"
+                  echo "EOF"
+                } >> "$GITHUB_OUTPUT"
+            
             # Print changed files for debugging
             - name: Print changed files
               run: |
