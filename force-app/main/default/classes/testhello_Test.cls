@@ -4,7 +4,7 @@ private class testhello_Test {
     static void testConstructor() {
         // Act
         testhello th = new testhello();
-
+        system.debug('test');
         // Assert - basic non-null check
         System.assertNotEquals(null, th, 'Constructor should create an instance');
     }
