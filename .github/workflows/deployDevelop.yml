@@ -50,7 +50,7 @@ jobs:
       - name: 'Get changed files'
         id: changed-files
         run: |
-          CHANGED_FILES=$(git diff --name-only origin/${{ github.ref_name }} HEAD -- 'force-app/main/default/')
+          CHANGED_FILES=$(git diff --name-only HEAD^ HEAD -- 'force-app/main/default/' | tr '\n' ' ')
           echo "Changed files:"
           echo "$CHANGED_FILES"
           {
