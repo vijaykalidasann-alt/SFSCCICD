@@ -7,7 +7,7 @@ private class testhello_Test {
         system.debug('test');
         // Assert - basic non-null check
         System.assertNotEquals(null, th, 'Constructor should create an instance');
-        //System.debug('Dummy method executed');
+        System.debug('Dummy method executed');
     }
 
     @IsTest
