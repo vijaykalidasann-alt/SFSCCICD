@@ -5,48 +5,68 @@ on:
       - 'cicddevelop*'
     paths:
       - 'force-app/**'
+  # Allow manual runs from the Actions tab
   workflow_dispatch:
 
+# Jobs to be executed when the above conditions are met
 jobs:
+  # This is the name of the deployment job. You can give it whatever name you want
   deploy-to-salesforce-org:
+    # Run on the latest Ubuntu VM
     runs-on: ubuntu-latest
+    # Skip workflow when Dependabot opens the PR
     if: ${{ github.actor != 'dependabot[bot]' }}
     steps:
+      # Install Node.js runtime required for CLI tooling
       - uses: actions/setup-node@v4
         with:
+          # Use a specific, stable version to minimize internal npm warnings
           node-version: '20'
 
+      # Checkout the repository code so the workflow can access it
       - name: 'Checkout source code'
         uses: actions/checkout@v3
         with:
+          # Fetch full history (needed for git diff between commits)
           fetch-depth: 0
 
+      # Install Salesforce CLI (sf). Prefer modern 'sf' over legacy 'sfdx'.
       - name: 'Install Salesforce CLI (sf)'
         run: |
+          # Install the modern SF CLI (sf) globally. This resolves dependency conflicts.
           npm install @salesforce/cli --global
 
+      # Install SFDX-Git-Delta plugin to assist in working with changed metadata
       - name: 'Installing sfdx git delta'
         run: |
+          # Install the plugin globally and list installed plugins to verify
           npm install sfdx-git-delta --global
           sf plugins
 
+      # Update apt cache to prepare for Java installation
       - name: 'updating java'
         run: sudo apt-get update
 
+      # Install Java JDK (required by some Salesforce tooling under the hood)
       - name: 'Installing java'
         run: sudo apt-get install -y openjdk-8-jdk
 
+      # Steps to authenticate to the Salesforce org using an SFDX_URL
       - name: 'Populate auth file with SFDX_URL secret of salesforce org'
         shell: bash
         run: |
+          # Write the SFDX auth URL into a local file for the login command
           echo 'force://PlatformCLI::5Aep8618MtpGySpPxg83rsknlG1y5TrI.sm0ZnG4.M3lKcyCTK9oWza45A3eXqQtRXgmqOGi5VIFA==@orgfarm-8886493b42-dev-ed.develop.my.salesforce.com' > ./SFDX_URL.txt
 
+      # Authenticate using the modern 'sf' command and set default org alias
       - name: 'Authenticate to Salesforce Org'
         run: sf org login sfdx-url -f ./SFDX_URL.txt --set-default --alias vjdev
 
+      # Fetch the branch that triggered this workflow (used for comparing changes if needed)
       - name: 'Fetch base branch'
         run: git fetch origin ${{ github.ref_name }}
 
+      # Compute list of changed files under force-app/main/default between the last and current commit on push
       - name: 'Get changed files'
         id: changed-files
         run: |
@@ -59,11 +79,13 @@ jobs:
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
 
+      # Print changed files for debugging and visibility in job logs
       - name: Print changed files
         run: |
           echo "The following files were changed:"
           echo "${{ steps.changed-files.outputs.changed_files }}"
 
+      # Deploy only the changed metadata files to the authenticated Salesforce org
       - name: 'Deploy only changed files'
         if: steps.changed-files.outputs.changed_files != ''
         run: |
@@ -72,8 +94,10 @@ jobs:
           for file in ${{ steps.changed-files.outputs.changed_files }}
           do
             if [[ -f "$file" ]]; then
+              # Copy the changed file into a temp folder maintaining folder structure
               mkdir -p "changed/$(dirname "$file")"
               cp "$file" "changed/$file"
+              # If corresponding -meta.xml exists in HEAD, include it to ensure valid deployment
               META_FILE="${file}-meta.xml"
               if git show "HEAD:$META_FILE" > /dev/null 2>&1; then
                 echo "Adding meta.xml for $file"
@@ -84,6 +108,7 @@ jobs:
           done
           if [[ -d changed/force-app/main/default ]]; then
             echo "Deploying only changed metadata..."
+            # Use sf deploy. Ignore conflicts, run local tests for validation, and target the default alias
             sf project deploy start -d changed/force-app/main/default --ignore-conflicts -l RunLocalTests --target-org vjdev
           else
             echo "No deployable metadata found under changed/force-app/main/default"
