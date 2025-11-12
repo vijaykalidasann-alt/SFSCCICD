@@ -83,10 +83,8 @@ jobs:
                 echo "Changed files:"
                 echo "$CHANGED_FILES"
                 {
-                  echo 'changed_files<<EOF'
-                  echo "$CHANGED_FILES"
-                  echo 'EOF'
-                } >> "$GITHUB_OUTPUT"
+                 echo "changed_files=$CHANGED_FILES" >> "$GITHUB_OUTPUT"
+                } 
               
             # Print changed files for debugging
             - name: Print changed files
