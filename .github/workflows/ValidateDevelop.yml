@@ -62,14 +62,14 @@ jobs:
             - name: 'Populate auth file with SFDX_URL secret of salesforce org'
               shell: bash
               run: |
-                  echo 'force://PlatformCLI::5Aep8618MtpGySpPxg83rsknlG1y5TrI.sm0ZnG4.M3lKcyCTK9oWza45A3eXqQtRXgmqOGi5VIFA==@orgfarm-8886493b42-dev-ed.develop.my.salesforce.com' > ./SFDX_URL.txt
+                  echo ${{ secrets.DEVELOP_AUTH_URL }} > ./SFDX_URL.txt
             # --- AUTHENTICATION STEP (This one worked, but let's make it sf) ---
             # --- AUTHENTICATION STEP ---
             - name: 'Authenticate to Salesforce Org'
               # The correct modern flag is --set-default.
               # The command must use the new 'sf' executable.
               # run: sf org login sfdx-url -f ./SFDX_URL.txt --set-default-alias ${{ inputs.environment }}  <-- OLD (FAILING)
-              run: sf org login sfdx-url -f ./SFDX_URL.txt --set-default --alias vjdev
+              run: sf org login sfdx-url -f ./SFDX_URL.txt --set-default --alias develop
 
             # Fetch the base branch to compare changes  
             - name: 'Fetch base branch'
@@ -119,7 +119,7 @@ jobs:
                 done
                 if [[ -d changed/force-app/main/default ]]; then
                   echo "Deploying only changed metadata..."
-                  sf project deploy start -d changed/force-app/main/default --ignore-conflicts --dry-run -l RunLocalTests --target-org vjdev
+                  sf project deploy start -d changed/force-app/main/default --ignore-conflicts --dry-run -l RunLocalTests --target-org develop
                 else
                   echo "No deployable metadata found under changed/force-app/main/default"
                 fi
