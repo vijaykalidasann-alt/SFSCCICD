@@ -1,0 +1,90 @@
+name: deploy develop branch on push
+on:
+  push:
+    branches:
+      - 'cicddevelop*'
+    paths:
+      - 'force-app/**'
+  workflow_dispatch:
+
+jobs:
+  deploy-to-salesforce-org:
+    runs-on: ubuntu-latest
+    if: ${{ github.actor != 'dependabot[bot]' }}
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 'Checkout source code'
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: 'Install Salesforce CLI (sf)'
+        run: |
+          npm install @salesforce/cli --global
+
+      - name: 'Installing sfdx git delta'
+        run: |
+          npm install sfdx-git-delta --global
+          sf plugins
+
+      - name: 'updating java'
+        run: sudo apt-get update
+
+      - name: 'Installing java'
+        run: sudo apt-get install -y openjdk-8-jdk
+
+      - name: 'Populate auth file with SFDX_URL secret of salesforce org'
+        shell: bash
+        run: |
+          echo 'force://PlatformCLI::5Aep8618MtpGySpPxg83rsknlG1y5TrI.sm0ZnG4.M3lKcyCTK9oWza45A3eXqQtRXgmqOGi5VIFA==@orgfarm-8886493b42-dev-ed.develop.my.salesforce.com' > ./SFDX_URL.txt
+
+      - name: 'Authenticate to Salesforce Org'
+        run: sf org login sfdx-url -f ./SFDX_URL.txt --set-default --alias vjdev
+
+      - name: 'Fetch base branch'
+        run: git fetch origin ${{ github.ref_name }}
+
+      - name: 'Get changed files'
+        id: changed-files
+        run: |
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.ref_name }} HEAD -- 'force-app/main/default/')
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+          {
+            echo 'changed_files<<EOF'
+            echo "$CHANGED_FILES"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Print changed files
+        run: |
+          echo "The following files were changed:"
+          echo "${{ steps.changed-files.outputs.changed_files }}"
+
+      - name: 'Deploy only changed files'
+        if: steps.changed-files.outputs.changed_files != ''
+        run: |
+          set -e
+          mkdir -p changed
+          for file in ${{ steps.changed-files.outputs.changed_files }}
+          do
+            if [[ -f "$file" ]]; then
+              mkdir -p "changed/$(dirname "$file")"
+              cp "$file" "changed/$file"
+              META_FILE="${file}-meta.xml"
+              if git show "HEAD:$META_FILE" > /dev/null 2>&1; then
+                echo "Adding meta.xml for $file"
+                mkdir -p "changed/$(dirname "$META_FILE")"
+                git show "HEAD:$META_FILE" > "changed/$META_FILE"
+              fi
+            fi
+          done
+          if [[ -d changed/force-app/main/default ]]; then
+            echo "Deploying only changed metadata..."
+            sf project deploy start -d changed/force-app/main/default --ignore-conflicts -l RunLocalTests --target-org vjdev
+          else
+            echo "No deployable metadata found under changed/force-app/main/default"
+          fi
